@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Lyzon.FileFormats.Layout;
 
 namespace Lyzon
 {
@@ -19,7 +20,14 @@ namespace Lyzon
 
         private void button1_Click(object sender, EventArgs e)
         {
+            OpenFileDialog ofd = new OpenFileDialog();
 
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                string filename = ofd.FileName;
+
+                BFLYT lyt = new BFLYT(ref filename);
+            }
         }
     }
 }

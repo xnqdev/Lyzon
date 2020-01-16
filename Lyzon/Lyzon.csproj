@@ -74,6 +74,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FileFormats\Layout\Cafe\BFLAN.cs" />
+    <Compile Include="FileFormats\Layout\Cafe\BFLYT.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
