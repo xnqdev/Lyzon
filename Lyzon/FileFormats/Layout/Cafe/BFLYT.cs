@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Drawing;
 using Syroot.BinaryData;
 using System.IO;
+using Lyzon.Utils;
 
 namespace Lyzon.FileFormats.Layout
 {
@@ -18,13 +19,14 @@ namespace Lyzon.FileFormats.Layout
         public static FontList fontList;
         public static MaterialList materialList;
 
-        public static Section currentSection;
+        public static SectionHeader currentSection;
+
+        public static Pane rootPane, parentPane, lastPane;
+
+        public static Group rootGroup, parentGroup, lastGroup;
 
         public class Header
         {
-            public string signature;
-            public int byteOrder, headerSize, version, fileSize, sectionCount;
-
             public Header(ref BinaryStream s)
             {
                 signature = s.ReadString(4);
@@ -36,20 +38,23 @@ namespace Lyzon.FileFormats.Layout
 
                 s.ReadUInt16(); // Reserved
             }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public string signature;
+            public int byteOrder, headerSize, version, fileSize, sectionCount;
         }
 
-        public class LayoutSettings : Section
+        public class LayoutSettings
         {
-            public string name;
-            public int originType;
-            public float screenWidth, screenHeight, maxPartsWidth, maxPartsHeight;
-
             public LayoutSettings(ref BinaryStream s)
             {
-                signature = currentSection.signature;
-                size = currentSection.size;
+                SectionHeader section = new SectionHeader(ref s);
 
-                originType = s.Read1Byte();
+                s.Read1Byte();
 
                 s.ReadBytes(3); // Padding
 
@@ -78,59 +83,270 @@ namespace Lyzon.FileFormats.Layout
 
                 s.Align(4);
             }
+
+            public SectionHeader sectionHeader;
+
+            public string name;
+            public int originType;
+            public float screenWidth, screenHeight, maxPartsWidth, maxPartsHeight;
         }
 
-        public class Section
+        public void ReadSections(ref BinaryStream s)
         {
-            public string signature;
-            public int size;
-        }
-
-        public Section ReadSection(ref BinaryStream s)
-        {
-            Section section = new Section();
-
-            section.signature = s.ReadString(4);
-            section.size = (int)s.ReadUInt32();
+            SectionHeader section = new SectionHeader(ref s);
 
             currentSection = section;
+
+            s.BaseStream.Position -= 8;
 
             switch (section.signature)
             {
                 case "lyt1":
                     layoutSettings = new LayoutSettings(ref s);
 
-                    System.Windows.Forms.MessageBox.Show($"Read Layout Settings [{section.size}]");
+                    System.Windows.Forms.MessageBox.Show($"Read Layout Settings [{section.signature}]");
+
+                    layoutSettings.sectionHeader = section;
                     break;
                 case "txl1":
                     textureList = new TextureList(ref s);
 
-                    System.Windows.Forms.MessageBox.Show($"Read Texture List [{section.size}]");
+                    System.Windows.Forms.MessageBox.Show($"Read Texture List [{section.signature}]");
+
+                    layoutSettings.sectionHeader = section;
                     break;
                 case "fnl1":
                     fontList = new FontList(ref s);
 
-                    System.Windows.Forms.MessageBox.Show($"Read Font List [{section.size}]");
+                    System.Windows.Forms.MessageBox.Show($"Read Font List [{section.signature}]");
+
+                    layoutSettings.sectionHeader = section;
                     break;
                 case "mat1":
                     materialList = new MaterialList(ref s);
 
-                    System.Windows.Forms.MessageBox.Show($"Read Material List [{section.size}]");
+                    System.Windows.Forms.MessageBox.Show($"Read Material List [{section.signature}]");
+
+                    layoutSettings.sectionHeader = section;
+                    break;
+                case "pan1":
+                    Pane pane = new Pane(ref s);
+
+                    if (rootPane == null)
+                        rootPane = pane;
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(pane);
+
+                        pane.parent = parentPane;
+                    }
+
+                    lastPane = pane;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "pic1":
+                    Picture pic = new Picture(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(pic);
+
+                        pic.parent = parentPane;
+                    }
+
+                    lastPane = pic;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Picture Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "txt1":
+                    TextBox txt = new TextBox(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(txt);
+
+                        txt.parent = parentPane;
+                    }
+
+                    lastPane = txt;
+
+                    System.Windows.Forms.MessageBox.Show($"Read TextBox Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "wnd1":
+                    Window wnd = new Window(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(wnd);
+
+                        wnd.parent = parentPane;
+                    }
+
+                    lastPane = wnd;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Window Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "bnd1":
+                    Bounding bnd = new Bounding(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(bnd);
+
+                        bnd.parent = parentPane;
+                    }
+
+                    lastPane = bnd;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Bounding Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "cpt1":
+                    Capture cpt = new Capture(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(cpt);
+
+                        cpt.parent = parentPane;
+                    }
+
+                    lastPane = cpt;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Capture Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "prt1":
+                    s.ReadBytes(section.size);
+                    break;
+                case "ali1":
+                    Alignment ali = new Alignment(ref s); // Read Alignment Pane later
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(ali);
+
+                        ali.parent = parentPane;
+                    }
+
+                    lastPane = ali;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Alignment Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "scr1":
+                    Scissor scr = new Scissor(ref s);
+
+                    if (parentPane != null)
+                    {
+                        if (parentPane.children == null)
+                            parentPane.children = new List<dynamic>();
+
+                        parentPane.children.Add(scr);
+
+                        scr.parent = parentPane;
+                    }
+
+                    lastPane = scr;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Scissor Pane [{section.signature}]");
+
+                    lastPane.sectionHeader = section;
+                    break;
+                case "pas1":
+                    if (lastPane != null)
+                        parentPane = lastPane;
+
+                    s.ReadBytes(8);
+                    break;
+                case "pae1":
+                    lastPane = parentPane;
+                    parentPane = lastPane != null ? lastPane.parent : null;
+
+                    s.ReadBytes(8);
+                    break;
+                case "grp1":
+                    Group group = new Group(ref s);
+
+                    if (rootGroup == null)
+                        rootGroup = group;
+
+                    if (parentGroup != null)
+                    {
+                        if (parentGroup.children == null)
+                            parentGroup.children = new List<Group>();
+
+                        parentGroup.children.Add(group);
+
+                        group.parent = parentGroup;
+                    }
+
+                    lastGroup = group;
+
+                    System.Windows.Forms.MessageBox.Show($"Read Group [{section.signature}]");
+
+                    lastGroup.sectionHeader = section;
+                    break;
+                case "grs1":
+                    if (lastGroup != null)
+                        parentGroup = lastGroup;
+
+                    s.ReadBytes(8);
+                    break;
+                case "gre1":
+                    lastGroup = parentGroup;
+                    parentGroup = lastGroup != null ? lastGroup.parent : null;
+
+                    s.ReadBytes(8);
                     break;
                 case "usd1": // Temporary
-                    s.ReadBytes(section.size - 8);
+                    s.ReadBytes(section.size);
+                    break;
+                case "cnt1": // Temporary
+                    s.ReadBytes(section.size);
                     break;
             }
-
-            return section;
         }
 
-        public class TextureList : Section
+        public class TextureList
         {
             public TextureList(ref BinaryStream s)
             {
-                signature = currentSection.signature;
-                size = currentSection.size;
+                SectionHeader section = new SectionHeader(ref s);
 
                 int startpos = (int)s.BaseStream.Position - 8;
 
@@ -158,20 +374,26 @@ namespace Lyzon.FileFormats.Layout
                     s.BaseStream.Position = offsetpos;
                 }
 
-                s.BaseStream.Position = startpos + size;
+                s.BaseStream.Position = startpos + section.size;
             }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public SectionHeader sectionHeader;
 
             public int textureCount;
             public uint[] fileNameOffsets;
             public string[] fileNames;
         }
 
-        public class FontList : Section
+        public class FontList
         {
             public FontList(ref BinaryStream s)
             {
-                signature = currentSection.signature;
-                size = currentSection.size;
+                SectionHeader section = new SectionHeader(ref s);
 
                 int startpos = (int)s.BaseStream.Position - 8;
 
@@ -199,20 +421,26 @@ namespace Lyzon.FileFormats.Layout
                     s.BaseStream.Position = offsetpos;
                 }
 
-                s.BaseStream.Position = startpos + size;
+                s.BaseStream.Position = startpos + section.size;
             }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public SectionHeader sectionHeader;
 
             public int fontCount;
             public uint[] fileNameOffsets;
             public string[] fileNames;
         }
 
-        public class MaterialList : Section
+        public class MaterialList
         {
             public MaterialList(ref BinaryStream s)
             {
-                signature = currentSection.signature;
-                size = currentSection.size;
+                SectionHeader section = new SectionHeader(ref s);
 
                 int startpos = (int)s.BaseStream.Position - 8;
 
@@ -236,8 +464,15 @@ namespace Lyzon.FileFormats.Layout
                     s.BaseStream.Position = offsetpos;
                 }
 
-                s.BaseStream.Position = startpos + size;
+                s.BaseStream.Position = startpos + section.size;
             }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public SectionHeader sectionHeader;
 
             public int materialCount;
             public uint[] infoOffsets;
@@ -294,7 +529,12 @@ namespace Lyzon.FileFormats.Layout
 
                     if (hasFontShadowParameter) fontShadowParameter = new FontShadowParameter(ref s);
 
-                    System.Windows.Forms.MessageBox.Show($"[{s.BaseStream.Position}] mat end");
+                    //System.Windows.Forms.MessageBox.Show($"[{s.BaseStream.Position}] mat end");
+                }
+
+                public void Write(ref BinaryStream s)
+                {
+                    // Incomplete
                 }
 
                 uint texMapCount;
@@ -651,8 +891,505 @@ namespace Lyzon.FileFormats.Layout
                     }
 
                     Color blackInterpolationColor, whiteInterpolationColor;
+
                 }
             }
+        }
+
+        public class Pane
+        {
+            public Pane(ref BinaryStream s)
+            {
+                ReadPane(this, ref s);
+            }
+
+            public static Pane ReadPane(Pane pane, ref BinaryStream s)
+            {
+                SectionHeader section = new SectionHeader(ref s);
+
+                pane.flag = s.Read1Byte();
+                pane.basePosition = s.Read1Byte();
+                pane.alpha = s.Read1Byte();
+                pane.extraFlag = s.Read1Byte();
+
+                pane.name = Encoding.ASCII.GetString(s.ReadBytes(24)).Replace("\0", "");
+                pane.userData = Encoding.ASCII.GetString(s.ReadBytes(8)).Replace("\0", "");
+
+                pane.transX = s.ReadSingle();
+                pane.transY = s.ReadSingle();
+                pane.transZ = s.ReadSingle();
+
+                pane.rotX = s.ReadSingle();
+                pane.rotY = s.ReadSingle();
+                pane.rotZ = s.ReadSingle();
+
+                pane.scaleX = s.ReadSingle();
+                pane.scaleY = s.ReadSingle();
+
+                pane.sizeX = s.ReadSingle();
+                pane.sizeY = s.ReadSingle();
+
+                return pane;
+            }
+
+            public void Write(ref BinaryStream s)
+            {
+                s.WriteByte(flag);
+                s.WriteByte(basePosition);
+                s.WriteByte(alpha);
+                s.WriteByte(extraFlag);
+
+                s.WriteString(name, StringCoding.Raw);
+                s.WriteString(userData, StringCoding.Raw);
+
+                s.WriteSingle(transX);
+                s.WriteSingle(transY);
+                s.WriteSingle(transZ);
+
+                s.WriteSingle(rotX);
+                s.WriteSingle(rotY);
+                s.WriteSingle(rotZ);
+
+                s.WriteSingle(scaleX);
+                s.WriteSingle(scaleY);
+
+                s.WriteSingle(sizeX);
+                s.WriteSingle(sizeY);
+            }
+
+            public dynamic parent;
+            public List<dynamic> children;
+
+            public SectionHeader sectionHeader;
+
+            public string name, userData;
+            public byte flag, basePosition, alpha, extraFlag;
+            public float transX, transY, transZ, rotX, rotY, rotZ, scaleX, scaleY, sizeX, sizeY;
+        }
+
+        public class Picture : Pane
+        {
+            public Picture(ref BinaryStream s) : base(ref s)
+            {
+                vertexColors = new Color[4];
+
+                vertexColors[0] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TL
+                vertexColors[1] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TR
+                vertexColors[2] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BL
+                vertexColors[3] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BR
+
+                materialIndex = s.ReadUInt16();
+                texCoordCount = s.Read1Byte();
+                flags = s.Read1Byte();
+
+                texCoords = new TexCoord[texCoordCount];
+
+                for (int i = 0; i < texCoordCount; i++)
+                {
+                    texCoords[i] = new TexCoord(
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TR
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // BL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()) // BR
+                    );
+                }
+            }
+
+            public new void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public class TexCoord
+            {
+                public TexCoord(Vec2 topLeft, Vec2 topRight, Vec2 bottomLeft, Vec2 bottomRight)
+                {
+                    this.topLeft = topLeft;
+                    this.topRight = topRight;
+                    this.bottomLeft = bottomLeft;
+                    this.bottomRight = bottomRight;
+                }
+
+                public Vec2 topLeft, topRight, bottomLeft, bottomRight;
+            }
+
+            Color[] vertexColors;
+
+            int materialIndex, texCoordCount;
+            byte flags;
+
+            TexCoord[] texCoords;
+        }
+
+        public class TextBox : Pane
+        {
+            public TextBox(ref BinaryStream s) : base(ref s)
+            {
+                int startPos = (int)s.BaseStream.Position - 84;
+
+                bufByteCount = s.ReadUInt16();
+                stringByteCount = s.ReadUInt16();
+
+                materialIndex = s.ReadUInt16();
+                fontIndex = s.ReadUInt16();
+
+                textPosition = s.Read1Byte();
+                textAlignment = s.Read1Byte();
+
+                flags = s.ReadUInt16();
+
+                italicsRatio = s.ReadSingle();
+
+                textOffset = s.ReadUInt32();
+
+                textColors = new Color[2];
+
+                textColors[0] = ColorHelper.BytesToColor(s.ReadBytes(4)); // Color 1
+                textColors[1] = ColorHelper.BytesToColor(s.ReadBytes(4)); // Color 2
+
+                fontSize = new Vec2(s.ReadSingle(), s.ReadSingle());
+
+                charSpace = s.ReadSingle();
+                lineSpace = s.ReadSingle();
+
+                textIDOffset = s.ReadUInt32();
+
+                shadowOffset = new Vec2(s.ReadSingle(), s.ReadSingle());
+                shadowScale = new Vec2(s.ReadSingle(), s.ReadSingle());
+
+                shadowColors = new Color[2];
+
+                shadowColors[0] = ColorHelper.BytesToColor(s.ReadBytes(4)); // Color 1
+                shadowColors[1] = ColorHelper.BytesToColor(s.ReadBytes(4)); // Color 2
+
+                shadowItalicsRatio = s.ReadSingle();
+
+                lineWidthOffsetOffset = s.ReadUInt32();
+
+                perCharacterTransformOffset = s.ReadUInt32();
+
+                text = Encoding.ASCII.GetString(s.ReadBytes(stringByteCount)).Replace("\0", "");
+
+                if (textIDOffset != 0)
+                {
+                    s.BaseStream.Position = startPos + textIDOffset;
+                    textID = (int)s.ReadUInt32();
+                }
+
+                s.Align(4); // Align everything
+
+                // Do character transforms later
+            }
+
+            public new void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public int bufByteCount, stringByteCount, materialIndex, fontIndex;
+
+            byte textPosition, textAlignment;
+
+            public ushort flags;
+
+            public float italicsRatio;
+
+            public uint textOffset;
+
+            public Color[] textColors;
+
+            public Vec2 fontSize;
+
+            public float charSpace, lineSpace;
+
+            public uint textIDOffset;
+
+            public Vec2 shadowOffset, shadowScale;
+
+            public Color[] shadowColors;
+
+            public float shadowItalicsRatio;
+
+            public uint lineWidthOffsetOffset, perCharacterTransformOffset;
+
+            public string text;
+
+            public int textID;
+        }
+
+        public class Window : Pane
+        {
+            public Window(ref BinaryStream s) : base(ref s)
+            {
+                int startPos = (int)s.BaseStream.Position - 84;
+
+                inflation = new WindowInflation();
+
+                inflation.left = s.ReadUInt16();
+                inflation.right = s.ReadUInt16();
+                inflation.top = s.ReadUInt16();
+                inflation.bottom = s.ReadUInt16();
+
+                frameSize = new WindowFrameSize();
+
+                frameSize.left = s.ReadUInt16();
+                frameSize.right = s.ReadUInt16();
+                frameSize.top = s.ReadUInt16();
+                frameSize.bottom = s.ReadUInt16();
+
+                frameCount = s.Read1Byte();
+                windowFlags = s.Read1Byte();
+
+                s.Align(4); // Padding
+
+                contentOffset = s.ReadUInt32();
+                frameOffsetTableOffset = s.ReadUInt32();
+
+                s.BaseStream.Position = startPos + contentOffset;
+
+                content = new WindowContent();
+
+                content.vertexColors = new Color[4];
+
+                content.vertexColors[0] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TL
+                content.vertexColors[1] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TR
+                content.vertexColors[2] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BL
+                content.vertexColors[3] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BR
+
+                content.materialIndex = s.ReadUInt16();
+                content.texCoordCount = s.Read1Byte();
+
+                s.Align(4); // Padding
+
+                content.texCoords = new TexCoord[content.texCoordCount];
+
+                for (int i = 0; i < content.texCoordCount; i++)
+                {
+                    content.texCoords[i] = new TexCoord(
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TR
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // BL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()) // BR
+                    );
+                }
+
+                s.BaseStream.Position = startPos + frameOffsetTableOffset;
+
+                frameOffsetTable = new uint[frameCount];
+
+                for (int i = 0; i < frameCount; i++)
+                {
+                    frameOffsetTable[i] = s.ReadUInt32();
+                }
+
+                frames = new WindowFrame[frameCount];
+
+                for (int i = 0; i < frameCount; i++)
+                {
+                    s.BaseStream.Position = startPos + frameOffsetTable[i];
+
+                    WindowFrame frame = new WindowFrame();
+
+                    frame.materialIndex = s.ReadUInt16();
+                    frame.textureFlip = s.Read1Byte();
+
+                    s.Align(4); // Padding
+
+                    frames[i] = frame;
+                }
+            }
+
+            public new void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public class WindowInflation
+            {
+                public int left, right, top, bottom;
+            }
+
+            public class WindowFrameSize
+            {
+                public int left, right, top, bottom;
+            }
+
+            public class WindowContent
+            {
+                public Color[] vertexColors;
+
+                public int materialIndex, texCoordCount;
+
+                public TexCoord[] texCoords;
+            }
+
+            public class WindowFrame
+            {
+                public int materialIndex;
+                public byte textureFlip;
+            }
+
+            public class TexCoord
+            {
+                public TexCoord(Vec2 topLeft, Vec2 topRight, Vec2 bottomLeft, Vec2 bottomRight)
+                {
+                    this.topLeft = topLeft;
+                    this.topRight = topRight;
+                    this.bottomLeft = bottomLeft;
+                    this.bottomRight = bottomRight;
+                }
+
+                public Vec2 topLeft, topRight, bottomLeft, bottomRight;
+            }
+
+            public WindowInflation inflation;
+
+            public WindowFrameSize frameSize;
+
+            public int frameCount;
+            public byte windowFlags;
+
+            public uint contentOffset, frameOffsetTableOffset;
+
+            public WindowContent content;
+
+            public uint[] frameOffsetTable;
+
+            public WindowFrame[] frames;
+        }
+
+        public class Bounding : Pane
+        {
+            public Bounding(ref BinaryStream s) : base(ref s)
+            {
+            }
+        }
+        public class Capture : Pane
+        {
+            public Capture(ref BinaryStream s) : base(ref s)
+            {
+            }
+        }
+
+        public class Parts : Pane
+        {
+            public Parts(ref BinaryStream s) : base(ref s)
+            {
+                vertexColors = new Color[4];
+
+                vertexColors[0] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TL
+                vertexColors[1] = ColorHelper.BytesToColor(s.ReadBytes(4)); // TR
+                vertexColors[2] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BL
+                vertexColors[3] = ColorHelper.BytesToColor(s.ReadBytes(4)); // BR
+
+                materialIndex = s.ReadUInt16();
+                texCoordCount = s.Read1Byte();
+                flags = s.Read1Byte();
+
+                texCoords = new TexCoord[texCoordCount];
+
+                for (int i = 0; i < texCoordCount; i++)
+                {
+                    texCoords[i] = new TexCoord(
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // TR
+                        new Vec2(s.ReadSingle(), s.ReadSingle()), // BL
+                        new Vec2(s.ReadSingle(), s.ReadSingle()) // BR
+                    );
+                }
+            }
+
+            public new void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public class TexCoord
+            {
+                public TexCoord(Vec2 topLeft, Vec2 topRight, Vec2 bottomLeft, Vec2 bottomRight)
+                {
+                    this.topLeft = topLeft;
+                    this.topRight = topRight;
+                    this.bottomLeft = bottomLeft;
+                    this.bottomRight = bottomRight;
+                }
+
+                public Vec2 topLeft, topRight, bottomLeft, bottomRight;
+            }
+
+            Color[] vertexColors;
+
+            int materialIndex, texCoordCount;
+            byte flags;
+
+            TexCoord[] texCoords;
+        }
+
+        public class Alignment : Pane // Later
+        {
+            public Alignment(ref BinaryStream s) : base(ref s)
+            {
+            }
+        }
+
+        public class Scissor : Pane
+        {
+            public Scissor(ref BinaryStream s) : base(ref s)
+            {
+            }
+        }
+
+        public class Group
+        {
+            public Group(ref BinaryStream s)
+            {
+                SectionHeader section = new SectionHeader(ref s);
+
+                name = Encoding.ASCII.GetString(s.ReadBytes(33)).Replace("\0", "");
+
+                s.Read1Byte(); // Padding
+
+                paneCount = s.ReadUInt16();
+
+                panes = new string[paneCount];
+
+                for (int i = 0; i < paneCount; i++)
+                {
+                    panes[i] = Encoding.ASCII.GetString(s.ReadBytes(24)).Replace("\0", "");
+                }
+            }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public Group parent;
+            public List<Group> children;
+
+            public SectionHeader sectionHeader;
+
+            public string name;
+
+            public string[] panes;
+            public int paneCount;
+        }
+
+        public class SectionHeader
+        {
+            public SectionHeader(ref BinaryStream s)
+            {
+                signature = s.ReadString(4);
+                size = (int)s.ReadUInt32();
+            }
+
+            public void Write(ref BinaryStream s)
+            {
+                // Incomplete
+            }
+
+            public string signature;
+            public int size;
         }
 
         public BFLYT(ref string filename)
@@ -663,13 +1400,20 @@ namespace Lyzon.FileFormats.Layout
 
             for (int i = 0; i < header.sectionCount; i++)
             {
-                ReadSection(ref s);
+                ReadSections(ref s);
             }
+
+            System.Windows.Forms.MessageBox.Show($"[{s.BaseStream.Position}] stream end");
 
             System.Windows.Forms.MessageBox.Show($"Done");
 
             s.Flush();
             s.Dispose();
+        }
+
+        public void Write(ref BinaryStream s)
+        {
+            // Incomplete
         }
     }
 }
